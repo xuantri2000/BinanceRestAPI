@@ -283,17 +283,37 @@ function displayHistoricalData(data) {
 
 function calculateLimits(lowestPrice, highestPrice) {
     const ratio = highestPrice / lowestPrice;
+
+    const truncateTo8 = (value) => {
+        const strValue = value.toString();
+        const index = strValue.indexOf('.');
+        if (index !== -1) {
+            return strValue.substring(0, index + 9);
+        }
+        return strValue;
+    };
+
     if (ratio < 1.05) {
         return { lowLimit: "Không", highLimit: "Không" };
     } else if (ratio < 1.08) {
-        return { lowLimit: lowestPrice * 1.2, highLimit: highestPrice * 1.3 };
+        return { 
+            lowLimit: truncateTo8(lowestPrice * 1.2), 
+            highLimit: truncateTo8(highestPrice * 1.3) 
+        };
     } else if (ratio < 1.11) {
-        return { lowLimit: lowestPrice * 2.2, highLimit: highestPrice * 2.3 };
+        return { 
+            lowLimit: truncateTo8(lowestPrice * 2.2), 
+            highLimit: truncateTo8(highestPrice * 2.3) 
+        };
     } else if (ratio < 1.15) {
-        return { lowLimit: lowestPrice * 3.2, highLimit: highestPrice * 3.3 };
+        return { 
+            lowLimit: truncateTo8(lowestPrice * 3.2), 
+            highLimit: truncateTo8(highestPrice * 3.3) 
+        };
     }
     return { lowLimit: "Không", highLimit: "Không" };
 }
+
 
 let openPrice = null;
 let currentPrice = null;
