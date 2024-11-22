@@ -1,105 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto Trading App</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .chart-container {
-            width: 80%;
-            margin: 20px auto;
+        .sort-button {
+            font-size: 0.875rem;
+            padding: 0.25rem 0.5rem;
+            margin: 0.125rem;
         }
-        canvas {
-            margin: 20px 0;
+        
+        .sort-button.active {
+            background-color: #0d6efd;
+            color: white;
+            border-color: #0d6efd;
         }
-        .controls {
-            text-align: center;
-            margin: 20px 0;
+        
+        .historical-textarea {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #dee2e6;
+            resize: vertical;
+            padding: 0.5rem;
         }
-        table {
-            width: 80%;
-            margin: 20px auto;
-            border-collapse: collapse;
+        
+        @media (max-width: 768px) {
+            .historical-textarea {
+                height: 300px;
+            }
         }
-        th, td {
-            padding: 8px;
-            text-align: left;
-            border: 1px solid #ddd;
+
+        .symbol-input {
+            text-transform: uppercase;
         }
-        th {
-            background-color: #f2f2f2;
-        }
-        #lastUpdate {
-            text-align: center;
-            color: #666;
-            margin: 10px 0;
-        }
+
+		.limit-section p{
+			margin-bottom: 0rem; 
+		}
     </style>
 </head>
 <body>
-    <h1 style="text-align: center;">Crypto Trading App</h1>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">Crypto Trading App</h1>
 
-    <div class="controls">
-        <input type="text" id="symbol" placeholder="Enter coin symbol (e.g., BTCUSDT)">
-        <button onclick="startChart()">Show Chart</button>
-        <button onclick="stopChart()" id="stopButton" disabled>Stop Updates</button>
+        <!-- Historical Data Section -->
+        <div class="container my-5">
+            
+            <div class="row g-3 mb-4 align-items-end">
+                <div class="col-md-3">
+                    <label for="histSymbol" class="form-label">Symbol for Historical Data</label>
+                    <input type="text" 
+                           class="form-control symbol-input" 
+                           id="histSymbol" 
+                           placeholder="Enter symbol (e.g., BTC)"
+                           required>
+                </div>
+                <div class="col-md-3">
+                    <label for="histDays" class="form-label">Number of Days</label>
+                    <select class="form-select" id="histDays">
+                        <option value="3">3 days</option>
+                        <option value="6">6 days</option>
+                        <option value="9">9 days</option>
+                        <option value="12">12 days</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button onclick="searchHistorical()" class="btn btn-primary">Search</button>
+                </div>
+				<div class="col-md-4">
+					<div id="lastUpdate">
+						<p class="mb-1">Last updated: <span id="currentTime"></span></p>
+						<p class="h5 mb-0">Current Price: <span id="currentPrice"></span></p>
+					</div>
+				</div>
+            </div>
+
+            <div id="historicalData"></div>
+        </div>
     </div>
 
-    <div id="lastUpdate" style="text-align: center;">
-		Last updated: <span id="currentTime"></span>
-		<br>
-		Current Price: <span id="currentPrice"></span>
-	</div>
-	
-
-    <div class="chart-container">
-        <canvas id="priceChart"></canvas>
-    </div>
-
-	<!-- Place order -->
-    <!-- <h2 style="text-align: center;">Place Order</h2>
-    <form id="orderForm" onsubmit="placeOrder(event)" style="text-align: center;">
-        <input type="text" id="orderSymbol" placeholder="Enter coin symbol (e.g., BTCUSDT)" required readonly>
-        <select id="orderSide">
-            <option value="BUY">Buy</option>
-            <option value="SELL">Sell</option>
-        </select>
-        <input type="number" id="orderQuantity" placeholder="Quantity" required min="0.0001" step="0.0001">
-        <button type="submit">Place Order</button>
-    </form>
-
-    <h2 style="text-align: center;">Order History</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Symbol</th>
-                <th>Type</th>
-                <th>Quantity</th>
-                <th>Price</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="orderTable">
-        </tbody>
-    </table> -->
-	<!-- Place order -->
-
-	<div class="container">
-		<h2 style="text-align: center;">Historical Data</h2>
-		<div class="controls">
-			<input type="text" id="histSymbol" placeholder="Enter symbol (e.g. BTCUSDT)" value="BTCUSDT">
-			<select id="histDays">
-				<option value="3">3 days</option>
-				<option value="6">6 days</option>
-				<option value="9">9 days</option>
-				<option value="12">12 days</option>
-			</select>
-			<button onclick="searchHistorical()">Search</button>
-		</div>
-		<div id="historicalData" style="overflow-x: auto;"></div>
-	</div>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
     <script src="/static/script.js"></script>
 </body>
 </html>

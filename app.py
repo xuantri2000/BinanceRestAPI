@@ -136,61 +136,41 @@ def get_orders():
 def get_historical_data():
     try:
         symbol = request.json.get('symbol', '').upper()
-        total_days = int(request.json.get('days', 5))
+        days = int(request.json.get('days', 5))  # days bây giờ sẽ là tổng số ngày luôn
 
         # Đặt múi giờ UTC
         utc_tz = timezone('UTC')
 
-        # Thời điểm hiện tại theo UTC (bao gồm giờ:phút:giây)
+        # Thời điểm hiện tại theo UTC
         current_time_utc = datetime.now(utc_tz)
         
-        # Thời điểm bắt đầu của ngày hiện tại (00:00:00)
-        start_of_today = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Thời điểm bắt đầu (n-1 ngày trước, tính từ đầu ngày)
+        start_time = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days-1)
         
         # Số ngày trong mỗi chunk
         days_per_chunk = 3
         
-        # Tính số chunks cần thiết cho dữ liệu lịch sử
-        num_chunks = math.ceil(total_days / days_per_chunk)
+        # Tính số chunks cần thiết
+        num_chunks = math.ceil(days / days_per_chunk)
         
         all_data = []
         
-        # Lấy dữ liệu của ngày hiện tại trước
-        today_params = {
-            'symbol': symbol,
-            'interval': '5m',
-            'startTime': int(start_of_today.timestamp() * 1000),
-            'endTime': int(current_time_utc.timestamp() * 1000),
-            'limit': 1000
-        }
-        
-        # Gửi yêu cầu GET cho ngày hiện tại
-        response = requests.get(f"{BASE_URL}/klines", params=today_params)
-        today_klines = response.json()
-        
-        # Format dữ liệu ngày hiện tại
-        for kline in today_klines:
-            try:
-                open_time = datetime.fromtimestamp(int(float(kline[0])) / 1000, tz=utc_tz)
-            except ValueError:
-                return jsonify({'error': f"Invalid data format in kline: {kline[0]}"})
-
-            formatted_time = open_time.strftime('%d.%m.%y - %H:%M')
-            formatted_kline = [formatted_time] + kline[1:]
-            all_data.append(formatted_kline)
-
-        # Thêm delay nhỏ sau khi lấy dữ liệu ngày hiện tại
-        time.sleep(0.1)
-        
-        # Lấy dữ liệu lịch sử cho các ngày trước đó
+        # Lặp qua từng chunk để lấy dữ liệu
         for i in range(num_chunks):
-            chunk_end = start_of_today - timedelta(days=i * days_per_chunk)
-            chunk_start = chunk_end - timedelta(days=days_per_chunk)
+            if i == 0:
+                # Chunk đầu tiên lấy đến thời điểm hiện tại
+                chunk_end = current_time_utc
+            else:
+                # Các chunk khác lấy đến cuối ngày
+                days_back = i * days_per_chunk
+                chunk_end = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_back-1)
             
-            # Đối với chunk cuối, điều chỉnh ngày bắt đầu nếu cần
+            # Tính thời điểm bắt đầu của chunk
             if i == num_chunks - 1:
-                remaining_days = total_days - (i * days_per_chunk)
-                chunk_start = chunk_end - timedelta(days=remaining_days)
+                # Chunk cuối cùng bắt đầu từ start_time
+                chunk_start = start_time
+            else:
+                chunk_start = chunk_end - timedelta(days=days_per_chunk)
 
             params = {
                 'symbol': symbol,
@@ -200,7 +180,11 @@ def get_historical_data():
                 'limit': 1000
             }
             
-            print(params)
+            print(f"Chunk {i + 1}/{num_chunks}:")
+            print(f"Start: {chunk_start}")
+            print(f"End: {chunk_end}")
+            print("Params:", params)
+            print("---")
 
             # Gửi yêu cầu GET đến Binance API
             response = requests.get(f"{BASE_URL}/klines", params=params)

@@ -3,7 +3,7 @@ let updateInterval;
 let priceUpdateInterval; // Biến để lưu interval của updatePrice
 let symbol;
 
-function startChart() {
+function startChart(symbol) {
     // Clear any existing intervals
     if (updateInterval) {
         clearInterval(updateInterval);
@@ -12,141 +12,9 @@ function startChart() {
         clearInterval(priceUpdateInterval);
     }
 
-    symbol = document.getElementById('symbol').value.toUpperCase();
-    if (!symbol) {
-        alert("Please enter a coin symbol");
-        return;
-    }
-
-    // document.getElementById('orderSymbol').value = symbol;
-
-    // Enable stop button
-    document.getElementById('stopButton').disabled = false;
-
-    // Clear the existing chart before creating a new one
-    if (chart) {
-        chart.destroy(); // Destroy the current chart instance
-        chart = null; // Reset the chart object
-    }
-
-    // Initial chart update
-    updateChart();
-
-    // Set interval to update every 1 minute (60000 milliseconds)
-    updateInterval = setInterval(updateChart, 60000);
-
     // Call updatePrice every second if symbol is valid
     priceUpdateInterval = setInterval(() => updatePrice(symbol), 1000);
-
-    loadOrders(symbol);
 }
-
-
-function stopChart() {
-    if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-    }
-    if (priceUpdateInterval) {
-        clearInterval(priceUpdateInterval);
-        priceUpdateInterval = null;
-    }
-    document.getElementById('stopButton').disabled = true;
-}
-
-async function updateChart() {
-    try {
-        const response = await fetch('/get_price', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol })
-        });
-
-        const data = await response.json();
-        if (data.error) {
-            alert(data.error);
-            stopChart(); // Stop chart update and price updates
-            return;
-        }
-
-        // Format timestamps to HH:mm format
-        const labels = data.timestamps.map(ts => {
-            const date = new Date(ts);
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        });
-
-        // If chart already exists, update it with new data
-        if (chart) {
-            // Add new label and data point
-            chart.data.labels.push(labels[labels.length - 1]);
-            chart.data.datasets[0].data.push(data.close[data.close.length - 1]);
-
-            // If the chart has more than 15 labels, remove the first one
-            if (chart.data.labels.length > 15) {
-                chart.data.labels.shift();
-                chart.data.datasets[0].data.shift();
-            }
-
-            // Update the chart with new data
-            chart.update('none');
-        } else {
-            // Create new chart if it doesn't exist yet
-            const ctx = document.getElementById('priceChart').getContext('2d');
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: `${symbol} Price (Last Hour)`,
-                        data: data.close,
-                        borderColor: 'rgb(75, 192, 192)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        fill: true,
-                        tension: 0.1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toFixed(2);
-                                }
-                            }
-                        },
-                        x: {
-                            ticks: {
-                                maxTicksLimit: 15
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `Price: ${context.parsed.y.toFixed(8)}`;
-                                }
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Price Chart (1-minute intervals)'
-                        }
-                    }
-                }
-            });
-        }
-    } catch (error) {
-        console.error('Error updating chart:', error);
-    }
-}
-
 
 async function updatePrice(symbol) {
     try {
@@ -175,68 +43,6 @@ async function updatePrice(symbol) {
     }
 }
 
-async function placeOrder(event) {
-    event.preventDefault();
-    const orderSymbol = document.getElementById('orderSymbol').value.toUpperCase();
-    const side = document.getElementById('orderSide').value;
-    const quantity = document.getElementById('orderQuantity').value;
-
-    try {
-        const response = await fetch('/place_order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: orderSymbol, side, quantity })
-        });
-
-        const data = await response.json();
-        if (data.error) {
-            alert(data.error);
-        } else {
-            alert("Order placed successfully!");
-            loadOrders(orderSymbol);
-        }
-    } catch (error) {
-        console.error("Error placing order:", error);
-        alert("Error placing order. Please try again.");
-    }
-}
-
-async function loadOrders(symbol) {
-    try {
-		document.getElementById('orderSymbol').value = symbol;
-
-        const response = await fetch('/get_orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol })
-        });
-
-        const orders = await response.json();
-
-        const orderTable = document.getElementById('orderTable');
-        orderTable.innerHTML = '';
-
-        if (!orders || orders.length === 0) {
-            console.log('No orders available.');
-            return;
-        }
-
-        orders.forEach(order => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${order.symbol}</td>
-                <td>${order.side}</td>
-                <td>${order.origQty}</td>
-                <td>${order.price || 'Market Price'}</td>
-                <td>${order.status}</td>
-            `;
-            orderTable.appendChild(row);
-        });
-    } catch (error) {
-        console.error("Error loading orders:", error);
-    }
-}
-
 async function searchHistorical() {
     const symbol = document.getElementById('histSymbol').value.toUpperCase();
     const days = parseInt(document.getElementById('histDays').value);
@@ -245,6 +51,8 @@ async function searchHistorical() {
         alert("Please enter a symbol");
         return;
     }
+
+	startChart(symbol);
 
     try {
         // showLoading(); // Giả sử bạn có hàm này để hiển thị loading indicator
@@ -278,7 +86,7 @@ function displayHistoricalData(data) {
     container.innerHTML = '';
 
     data.length -= 1;
-    const columnsPerTable = 4;
+    const columnsPerTable = window.innerWidth < 768 ? 1 : 3;
 
     // Nhóm dữ liệu theo ngày
     const groupedByDay = {};
@@ -296,15 +104,17 @@ function displayHistoricalData(data) {
 
     for (let tableIndex = 0; tableIndex < numberOfTables; tableIndex++) {
         const tableContainer = document.createElement('div');
-        tableContainer.style.marginBottom = '30px';
+        tableContainer.className = 'mb-5';
 
-        const table = document.createElement('table');
-        table.style.borderCollapse = 'collapse';
-        table.style.width = '100%';
+        const tableTitle = document.createElement('h5');
+        const tableStartDay = days[tableIndex * columnsPerTable];
+        const tableEndDay = days[Math.min((tableIndex + 1) * columnsPerTable - 1, days.length - 1)];
+        tableTitle.className = 'mb-3';
+        tableTitle.textContent = `Data from ${tableStartDay} to ${tableEndDay}`;
+        tableContainer.appendChild(tableTitle);
 
-        const sortButtonRow = document.createElement('tr');
-        const headerRow = document.createElement('tr');
-        const dataRow = document.createElement('tr');
+        const row = document.createElement('div');
+        row.className = 'row g-4';
 
         for (let col = 0; col < columnsPerTable; col++) {
             const dayIndex = tableIndex * columnsPerTable + col;
@@ -313,89 +123,107 @@ function displayHistoricalData(data) {
                 const currentDate = days[dayIndex];
                 const dayData = groupedByDay[currentDate];
 
-                // Tạo ô chứa nút sort
-                const sortTh = document.createElement('th');
-                sortTh.style.padding = '5px';
-                sortTh.style.border = '1px solid #ddd';
+                const colDiv = document.createElement('div');
+                colDiv.className = window.innerWidth < 768 ? 'col-12' : 'col-md-4';
+
+                const card = document.createElement('div');
+                card.className = 'card';
+
+                const cardHeader = document.createElement('div');
+                cardHeader.className = 'card-header';
                 
-                const buttonContainer = document.createElement('div');
-                buttonContainer.style.display = 'flex';
-                buttonContainer.style.gap = '5px';
-                buttonContainer.style.justifyContent = 'center';
-                buttonContainer.style.flexWrap = 'wrap';
+                // Tách thành 2 button groups riêng biệt
+                const priceButtonGroup = document.createElement('div');
+                priceButtonGroup.className = 'd-flex flex-wrap gap-1 justify-content-center mb-2';
 
-                // Các nút sort
-                const ascButton = document.createElement('button');
-                ascButton.textContent = '↑ Giá';
-                ascButton.style.padding = '5px';
-                
-                const descButton = document.createElement('button');
-                descButton.textContent = '↓ Giá';
-                descButton.style.padding = '5px';
-                
-                const timeButton = document.createElement('button');
-                timeButton.textContent = '⌚ Giờ';
-                timeButton.style.padding = '5px';
+                const sortButtonGroup = document.createElement('div');
+                sortButtonGroup.className = 'd-flex flex-wrap gap-1 justify-content-center';
 
-                const highButton = document.createElement('button');
-                highButton.textContent = '↟ Cao';
-                highButton.style.padding = '5px';
-                highButton.classList.add('active');
+                const priceButtons = [
+                    { text: '↟ High', id: 'high' },
+                    { text: '↡ Low', id: 'low' }
+                ];
 
-                const lowButton = document.createElement('button');
-                lowButton.textContent = '↡ Thấp';
-                lowButton.style.padding = '5px';
+                const sortButtons = [
+                    { text: '↑ Price', id: 'asc' },
+                    { text: '↓ Price', id: 'desc' },
+                    { text: '⌚ Time', id: 'time' }
+                ];
 
-                buttonContainer.appendChild(highButton);
-                buttonContainer.appendChild(lowButton);
-                buttonContainer.appendChild(ascButton);
-                buttonContainer.appendChild(descButton);
-                buttonContainer.appendChild(timeButton);
-                sortTh.appendChild(buttonContainer);
-                sortButtonRow.appendChild(sortTh);
+                // Tạo các nút chọn giá
+                priceButtons.forEach(btn => {
+                    const button = document.createElement('button');
+                    button.className = 'btn btn-sm btn-outline-primary price-button';
+                    button.textContent = btn.text;
+                    button.dataset.priceMode = btn.id;
+                    if (btn.id === 'low') button.classList.add('active');
+                    priceButtonGroup.appendChild(button);
+                });
 
-                // Tạo tiêu đề ngày
-                const th = document.createElement('th');
-                th.textContent = currentDate;
-                th.style.padding = '10px';
-                th.style.border = '1px solid #ddd';
-                th.style.backgroundColor = '#f4f4f4';
-                headerRow.appendChild(th);
+                // Tạo các nút sắp xếp
+                sortButtons.forEach(btn => {
+                    const button = document.createElement('button');
+                    button.className = 'btn btn-sm btn-outline-primary sort-button';
+                    button.textContent = btn.text;
+                    button.dataset.sortType = btn.id;
+                    if (btn.id === 'asc') button.classList.add('active');
+                    sortButtonGroup.appendChild(button);
+                });
 
-                // Tạo ô chứa textarea
-                const td = document.createElement('td');
-                td.style.border = '1px solid #ddd';
+                cardHeader.appendChild(priceButtonGroup);
+                cardHeader.appendChild(sortButtonGroup);
 
-                // Tạo textarea
+                const cardBody = document.createElement('div');
+                cardBody.className = 'card-body';
+
+                const dateTitle = document.createElement('h6');
+                dateTitle.className = 'card-title text-center mb-3';
+                dateTitle.textContent = currentDate;
+
                 const textarea = document.createElement('textarea');
+                textarea.className = 'historical-textarea';
+                textarea.setAttribute('readonly', true);
 
-                // Chuyển đổi dữ liệu ngày thành định dạng hiển thị
+                const limitsContainer = document.createElement('div');
+                limitsContainer.className = 'mt-1 limit-section';
+
+                const ratioDisplay = document.createElement('p');
+                const lowLimitDisplay = document.createElement('p');
+                const highLimitDisplay = document.createElement('p');
+
+                limitsContainer.appendChild(ratioDisplay);
+                limitsContainer.appendChild(lowLimitDisplay);
+                limitsContainer.appendChild(highLimitDisplay);
+
+                // Data processing logic
                 const formattedDayData = dayData.map(record => ({
                     time: record[0],
-                    highPrice: parseFloat(record[2]), // Giá cao
-                    lowPrice: parseFloat(record[3]), // Giá thấp
+                    highPrice: parseFloat(record[2]),
+                    lowPrice: parseFloat(record[3]),
                     displayHigh: `${record[0]} : ${parseFloat(record[2]).toFixed(8)}`,
                     displayLow: `${record[0]} : ${parseFloat(record[3]).toFixed(8)}`
                 }));
 
-                // State để theo dõi mode hiển thị hiện tại
-                let currentPriceMode = 'high'; // 'high' hoặc 'low'
+                let currentPriceMode = 'low';
+                let currentSortType = 'asc';
 
-                // Function để lấy giá theo mode hiện tại
-                const getCurrentPrice = (item) => {
-                    return currentPriceMode === 'high' ? item.highPrice : item.lowPrice;
+                const getCurrentPrice = (item) => currentPriceMode === 'high' ? item.highPrice : item.lowPrice;
+                const getCurrentDisplay = (item) => currentPriceMode === 'high' ? item.displayHigh : item.displayLow;
+
+                const updateLimits = () => {
+                    const lowestPrice = Math.min(...formattedDayData.map(item => item.lowPrice));
+                    const highestPrice = Math.max(...formattedDayData.map(item => item.lowPrice));
+                    const { lowLimit, highLimit } = calculateLimits(lowestPrice, highestPrice);
+                    const ratio = (highestPrice / lowestPrice).toFixed(4);
+
+                    ratioDisplay.innerHTML = `<b>Tỉ lệ Cao/Thấp: </b>${ratio}`;
+                    lowLimitDisplay.innerHTML = `<b>Giới hạn Thấp: </b>${lowLimit}`;
+                    highLimitDisplay.innerHTML = `<b>Giới hạn Cao: </b>${highLimit}`;
                 };
 
-                // Function để lấy display text theo mode hiện tại
-                const getCurrentDisplay = (item) => {
-                    return currentPriceMode === 'high' ? item.displayHigh : item.displayLow;
-                };
-
-                // Function để update textarea
-                const updateTextarea = (data, sortType = 'asc') => {
-                    let sortedData = [...data];
-                    
-                    switch(sortType) {
+                const updateTextarea = () => {
+                    let sortedData = [...formattedDayData];
+                    switch(currentSortType) {
                         case 'asc':
                             sortedData.sort((a, b) => getCurrentPrice(a) - getCurrentPrice(b));
                             break;
@@ -403,88 +231,63 @@ function displayHistoricalData(data) {
                             sortedData.sort((a, b) => getCurrentPrice(b) - getCurrentPrice(a));
                             break;
                         case 'time':
-                            // Giữ nguyên thứ tự ban đầu
-                            break;
+                            break; // Giữ nguyên thứ tự thời gian
                     }
-
                     textarea.value = sortedData.map(item => getCurrentDisplay(item)).join('\n');
+                    updateLimits();
                 };
 
-                // Function để cập nhật trạng thái active của buttons
-                const updateButtonState = (activeButton) => {
-                    highButton.classList.remove('active');
-                    lowButton.classList.remove('active');
-                    activeButton.classList.add('active');
-                };
-
-                // Thêm style cho button active
-                const style = document.createElement('style');
-                style.textContent = `
-                    button.active {
-                        background-color: #007bff;
-                        color: white;
-                    }
-                `;
-                document.head.appendChild(style);
-
-                // Event listeners cho các nút
-                highButton.addEventListener('click', () => {
-                    currentPriceMode = 'high';
-                    updateButtonState(highButton);
-                    updateTextarea(formattedDayData, 'asc');
+                // Add event listeners to price buttons
+                priceButtonGroup.querySelectorAll('button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        priceButtonGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                        button.classList.add('active');
+                        currentPriceMode = button.dataset.priceMode;
+                        updateTextarea();
+                    });
                 });
 
-                lowButton.addEventListener('click', () => {
-                    currentPriceMode = 'low';
-                    updateButtonState(lowButton);
-                    updateTextarea(formattedDayData, 'asc');
+                // Add event listeners to sort buttons
+                sortButtonGroup.querySelectorAll('button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        sortButtonGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                        button.classList.add('active');
+                        currentSortType = button.dataset.sortType;
+                        updateTextarea();
+                    });
                 });
 
-                ascButton.addEventListener('click', () => {
-                    updateTextarea(formattedDayData, 'asc');
-                });
+                // Initialize with default display
+                updateTextarea();
 
-                descButton.addEventListener('click', () => {
-                    updateTextarea(formattedDayData, 'desc');
-                });
-
-                timeButton.addEventListener('click', () => {
-                    updateTextarea(formattedDayData, 'time');
-                });
-
-                // Định dạng textarea
-                textarea.style.width = '97%';
-                textarea.style.height = '400px';
-                textarea.style.border = '1px solid #ddd';
-                textarea.style.resize = 'vertical';
-                textarea.setAttribute('readonly', true);
-
-                // Khởi tạo hiển thị mặc định với giá cao nhất, sắp xếp tăng dần
-                updateTextarea(formattedDayData, 'asc');
-
-                td.appendChild(textarea);
-                dataRow.appendChild(td);
+                cardBody.appendChild(dateTitle);
+                cardBody.appendChild(textarea);
+                cardBody.appendChild(limitsContainer);
+                card.appendChild(cardHeader);
+                card.appendChild(cardBody);
+                colDiv.appendChild(card);
+                row.appendChild(colDiv);
             }
         }
 
-        // Thêm các hàng vào bảng
-        table.appendChild(sortButtonRow);
-        table.appendChild(headerRow);
-        table.appendChild(dataRow);
-
-        // Tạo tiêu đề cho bảng
-        const tableStartDay = days[tableIndex * columnsPerTable];
-        const tableEndDay = days[Math.min((tableIndex + 1) * columnsPerTable - 1, days.length - 1)];
-
-        const tableName = document.createElement('div');
-        tableName.style.marginBottom = '10px';
-        tableName.style.fontWeight = 'bold';
-        tableName.textContent = `Bảng dữ liệu từ ngày ${tableStartDay} đến ngày ${tableEndDay}`;
-
-        tableContainer.appendChild(tableName);
-        tableContainer.appendChild(table);
+        tableContainer.appendChild(row);
         container.appendChild(tableContainer);
     }
+}
+
+
+function calculateLimits(lowestPrice, highestPrice) {
+    const ratio = highestPrice / lowestPrice;
+    if (ratio < 1.05) {
+        return { lowLimit: "Không", highLimit: "Không" };
+    } else if (ratio < 1.08) {
+        return { lowLimit: lowestPrice * 1.2, highLimit: highestPrice * 1.3 };
+    } else if (ratio < 1.11) {
+        return { lowLimit: lowestPrice * 2.2, highLimit: highestPrice * 2.3 };
+    } else if (ratio < 1.15) {
+        return { lowLimit: lowestPrice * 3.2, highLimit: highestPrice * 3.3 };
+    }
+    return { lowLimit: "Không", highLimit: "Không" };
 }
 
 let openPrice = null;
