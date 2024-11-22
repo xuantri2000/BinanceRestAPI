@@ -85,7 +85,7 @@ function displayHistoricalData(data) {
     const container = document.getElementById('historicalData');
     container.innerHTML = '';
 
-    data.length -= 1;
+    // data.length -= 1;
     const columnsPerTable = window.innerWidth < 768 ? 1 : 3;
 
     // Nhóm dữ liệu theo ngày
