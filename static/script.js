@@ -27,7 +27,7 @@ async function updatePrice(symbol) {
         const data = await response.json();
         // console.log(data)
         if (data.error) {
-            alert(data.error); // Show error if symbol is invalid
+            //alert(data.error); // Show error if symbol is invalid
             clearInterval(priceUpdateInterval); // Stop further price updates
             return;
         }
@@ -46,16 +46,19 @@ async function updatePrice(symbol) {
 async function searchHistorical() {
     const symbol = document.getElementById('histSymbol').value.toUpperCase();
     const days = parseInt(document.getElementById('histDays').value);
+    const searchButton = document.getElementById('searchButton');
     
     if (!symbol) {
         alert("Please enter a symbol");
         return;
     }
 
-	startChart(symbol);
+    // Thay đổi nút thành trạng thái Loading
+    searchButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+    searchButton.disabled = true; // Vô hiệu hóa nút
 
     try {
-        // showLoading(); // Giả sử bạn có hàm này để hiển thị loading indicator
+		startChart(symbol);
 
         const response = await fetch('/get_historical_data', {
             method: 'POST',
@@ -64,22 +67,24 @@ async function searchHistorical() {
         });
 
         const data = await response.json();
-        
-        // hideLoading(); // Giả sử bạn có hàm này để ẩn loading indicator
-        
-        if (data.error) {
-            alert(data.error);
-            return;
-        }
 
-        console.log(data);
-        displayHistoricalData(data);
+        if (data.error) {
+            alert("Đã xảy ra lỗi trong quá trình lấy dữ liệu, vui lòng kiểm tra lại tên Symbol!");
+        } else {
+            console.log(data);
+            displayHistoricalData(data);
+        }
     } catch (error) {
-        // hideLoading();
         console.error('Error fetching historical data:', error);
         alert('Error fetching historical data');
+    } finally {
+        // Đặt lại nút về trạng thái ban đầu
+        searchButton.innerHTML = 'Search';
+        searchButton.disabled = false; // Kích hoạt lại nút
     }
 }
+
+
 
 function displayHistoricalData(data) {
     const container = document.getElementById('historicalData');
