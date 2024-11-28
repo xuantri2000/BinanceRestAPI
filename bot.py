@@ -26,7 +26,8 @@ def load_previous_ratios():
 	if os.path.exists(PREVIOUS_RATIO_FILE):
 		with open(PREVIOUS_RATIO_FILE, 'r') as f:
 			try:
-				return json.load(f)
+				ratios = json.load(f)
+				return ratios
 			except json.JSONDecodeError:
 				return {}
 	return {}
@@ -38,8 +39,17 @@ def save_previous_ratios(ratios):
 def read_coin_list():
 	if not os.path.exists(CHECKLIST_FILE):
 		return []
+	
 	with open(CHECKLIST_FILE, 'r') as f:
-		return [coin.strip().upper() for coin in f.readlines()]
+		# Lọc bỏ các dòng trống và chuẩn hóa dữ liệu
+		coins = [coin.strip().upper() for coin in f.readlines() if coin.strip()]
+	
+	# Ghi danh sách đã loại bỏ dòng trống trở lại tệp
+	with open(CHECKLIST_FILE, 'w') as f:
+		for coin in coins:
+			f.write(f"{coin}\n")
+	
+	return coins
 
 def write_coin_list(coins):
 	with open(CHECKLIST_FILE, 'w') as f:
@@ -51,46 +61,197 @@ def write_coin_list(coins):
 def start_handler(message):
 	global USER_CHAT_ID
 	USER_CHAT_ID = message.chat.id
-	bot.reply_to(message, "Bắt đầu theo dõi coin theo danh sách.")
 
-	time.sleep(1)
-	check_coin_limits()
+	# Thêm giờ trong thông báo bắt đầu
+	utc_tz = timezone('UTC')
+	current_time_utc = datetime.now(utc_tz).strftime('%H:%M - %d.%m.%y')
+	bot.reply_to(message, f"Bắt đầu theo dõi coin theo danh sách lúc {current_time_utc} UTC.")
+
+	try:
+		# Đọc danh sách coin hiện tại từ checklist.txt
+		current_coins = read_coin_list()
+		if not current_coins:
+			bot.reply_to(message, "Danh sách coin trống. Vui lòng thêm coin bằng lệnh /add.")
+			return
+
+		# Lấy dữ liệu tỷ lệ theo thời gian thực
+		chunk_start = datetime.now(utc_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+		chunk_end = datetime.now(utc_tz)
+
+		previous_ratios = {}  # Khởi tạo dữ liệu mới cho previous_ratios
+		failed_coins = []  # Danh sách các coin không lấy được dữ liệu
+
+		for symbol in current_coins:
+			try:
+				params = {
+					'symbol': symbol,
+					'interval': '5m',
+					'startTime': int(chunk_start.timestamp() * 1000),
+					'endTime': int(chunk_end.timestamp() * 1000),
+					'limit': 500
+				}
+				response = requests.get(f"{BASE_URL}/klines", params=params)
+				data = response.json()
+
+				if response.status_code != 200 or not data or not isinstance(data, list):
+					failed_coins.append(symbol)
+					continue
+
+				# Tính tỷ lệ cao/thấp (ratio)
+				formatted_data = []
+				for kline in data:
+					low_price = float(kline[3])  # Lowest price
+					formatted_data.append(low_price)
+
+				if formatted_data:
+					lowest_price = min(formatted_data)
+					highest_price = max(formatted_data)
+					ratio = highest_price / lowest_price
+
+					# Lưu vào previous_ratios
+					previous_ratios[symbol] = {
+						'ratio': ratio, 
+						'tracking_time': datetime.now(utc_tz).strftime('%d.%m.%y - %H:%M')
+					}
+			except Exception as e:
+				print(f"Lỗi khi xử lý coin {symbol}: {e}")
+				failed_coins.append(symbol)
+
+		# Lưu dữ liệu mới vào tệp previous_ratios
+		save_previous_ratios(previous_ratios)
+
+		# Gửi thông báo về các coin không lấy được dữ liệu
+		if failed_coins:
+			response_message = "Không thể lấy dữ liệu cho các coin sau:\n" + "\n".join(failed_coins)
+			bot.reply_to(message, response_message)
+
+	except Exception as e:
+		print(f"Lỗi: {str(e)}")
+
+@bot.message_handler(commands=['status'])
+def status_coins(message):
+	previous_ratios = load_previous_ratios()
+	
+	if not previous_ratios:
+		bot.reply_to(message, "Chưa có dữ liệu theo dõi coin.")
+		return
+	
+	status_message = "Tracking time:\n\n"
+	for symbol, data in previous_ratios.items():
+		status_message += f"{symbol}:\n"
+		status_message += f"  Tỉ lệ Cao/Thấp: {data['ratio']:.4f}\n"
+		status_message += f"  Lần ghi cuối: {data.get('tracking_time', 'Không có dữ liệu')}\n\n"
+	
+	bot.reply_to(message, status_message)
 
 @bot.message_handler(commands=['add'])
 def add_coins(message):
 	try:
-		# Split by comma and handle multiple coins in one command
+		# Lấy danh sách các coin cần thêm
 		coins_to_add = [coin.strip().upper() for coin in message.text.split('/add')[1].replace(',', '\n').split('\n') if coin.strip()]
 		current_coins = read_coin_list()
-		
-		# Track newly added coins
-		newly_added = []
-		for coin in coins_to_add:
-			if coin not in current_coins:
-				current_coins.append(coin)
-				newly_added.append(coin)
-		
-		# Write updated list
+		response_message = ""
+		utc_tz = timezone('UTC')
+		current_time_utc = datetime.now(utc_tz)
+
+		# Xác định các coin mới và các coin đã tồn tại
+		newly_added = [coin for coin in coins_to_add if coin not in current_coins]
+		existing_coins = [coin for coin in coins_to_add if coin in current_coins]
+
+		# Nếu có coin đã tồn tại, thông báo cho người dùng
+		if existing_coins:
+			response_message += "Các coin sau đã tồn tại trong danh sách:\n" + "\n".join(existing_coins) + "\n"
+
+		# Thêm các coin mới vào danh sách
+		current_coins += newly_added
+
+		# Ghi danh sách cập nhật vào file
 		write_coin_list(current_coins)
-		
-		if newly_added:
-			response = "Đã thêm các coin sau:\n" + "\n".join(newly_added)
+
+		# Kiểm tra tính hợp lệ của các coin mới
+		invalid_coins = []
+		chunk_start = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+		chunk_end = current_time_utc
+
+		previous_ratios = load_previous_ratios()
+
+		for symbol in newly_added:
+			try:
+				params = {
+					'symbol': symbol,
+					'interval': '5m',
+					'startTime': int(chunk_start.timestamp() * 1000),
+					'endTime': int(chunk_end.timestamp() * 1000),
+					'limit': 500
+				}
+				response = requests.get(f"{BASE_URL}/klines", params=params)
+				data = response.json()
+
+				if response.status_code != 200 or not data or not isinstance(data, list):
+					invalid_coins.append(symbol)
+					continue
+
+				# Tính tỷ lệ cao/thấp
+				formatted_data = []
+				for kline in data:
+					low_price = float(kline[3])  # Lowest price
+					formatted_data.append(low_price)
+
+				if formatted_data:
+					lowest_price = min(formatted_data)
+					highest_price = max(formatted_data)
+					ratio = highest_price / lowest_price
+					previous_ratios[symbol] = {
+						'ratio': ratio, 
+						'tracking_time': current_time_utc.strftime('%d.%m.%y - %H:%M')
+					}
+
+			except Exception as e:
+				print(f"Lỗi khi kiểm tra coin {symbol}: {e}")
+				invalid_coins.append(symbol)
+
+		# Lưu lại previous_ratios nếu có thay đổi
+		save_previous_ratios(previous_ratios)
+
+		# Loại bỏ các coin không hợp lệ khỏi file và thông báo
+		if invalid_coins:
+			current_coins = [coin for coin in current_coins if coin not in invalid_coins]
+			write_coin_list(current_coins)
+			response_message += "Các coin sau không hợp lệ và đã bị xóa:\n" + "\n".join(invalid_coins)
 		else:
-			response = "Không có coin mới được thêm. Tất cả các coin đã tồn tại."
-		
-		bot.reply_to(message, response)
+			response_message += "Đã thêm và cập nhật các coin sau lúc " + current_time_utc.strftime('%H:%M - %d.%m.%y') + ":\n" + "\n".join(newly_added)
+
+		bot.reply_to(message, response_message)
 	except Exception as e:
-		bot.reply_to(message, f"Lỗi: {str(e)}")
+		print(f"Lỗi: {str(e)}")
 
 @bot.message_handler(commands=['remove'])
 def remove_coins(message):
 	try:
-		# Split by comma and handle multiple coins in one command
+		# Lấy danh sách các coin cần xóa
 		coins_to_remove = [coin.strip().upper() for coin in message.text.split('/remove')[1].replace(',', '\n').split('\n') if coin.strip()]
 		current_coins = read_coin_list()
-		current_coins = [coin for coin in current_coins if coin not in coins_to_remove]
-		write_coin_list(current_coins)
-		response = "Đã xóa các coin sau:\n" + "\n".join(coins_to_remove)
+
+		# Xác định các coin thực sự tồn tại trong danh sách hiện tại
+		valid_coins_to_remove = [coin for coin in coins_to_remove if coin in current_coins]
+
+		# Cập nhật danh sách coin
+		updated_coins = [coin for coin in current_coins if coin not in valid_coins_to_remove]
+		write_coin_list(updated_coins)
+
+		# Xóa các coin hợp lệ khỏi previous_ratios
+		previous_ratios = load_previous_ratios()
+		for coin in valid_coins_to_remove:
+			if coin in previous_ratios:
+				del previous_ratios[coin]
+		save_previous_ratios(previous_ratios)
+
+		# Tạo phản hồi
+		if valid_coins_to_remove:
+			response = "Đã xóa các coin sau:\n" + "\n".join(valid_coins_to_remove)
+		else:
+			response = "Không có coin nào trong danh sách cần xóa."
+
 		bot.reply_to(message, response)
 	except Exception as e:
 		bot.reply_to(message, f"Lỗi: {str(e)}")
@@ -123,44 +284,14 @@ Quản lý Danh Sách Coin:
 
 /list - Hiển thị danh sách coin hiện tại đang theo dõi
 
+/status - Hiển thị lần cập nhật cuối trong file tỉ lệ cao/thấp
+
 🤖 Hướng dẫn sử dụng:
 - Thêm coin vào danh sách để bot theo dõi và gửi thông báo
 - Mỗi coin sẽ được phân tích giá và gửi thông báo tự động
 - Sử dụng /help để xem hướng dẫn chi tiết bất kỳ lúc nào
 """
 	bot.reply_to(message, help_text)
-
-def calculate_limits(lowest_price, highest_price):
-	def truncate_to_8(value):
-		str_value = str(value)
-		index = str_value.find('.')
-		if index != -1:
-			return str_value[:index+9]
-		return str_value
-
-	ratio = highest_price / lowest_price
-
-	if ratio < 1.05:
-		return {"lowLimit": "Không", "highLimit": "Không"}
-	elif ratio < 1.08:
-		return {
-			"lowLimit": truncate_to_8(lowest_price * 1.2),
-			"highLimit": truncate_to_8(highest_price * 1.3)
-		}
-	elif ratio < 1.11:
-		return {
-			"lowLimit": truncate_to_8(lowest_price * 2.2),
-			"highLimit": truncate_to_8(highest_price * 2.3)
-		}
-	elif ratio < 1.15:
-		return {
-			"lowLimit": truncate_to_8(lowest_price * 3.2),
-			"highLimit": truncate_to_8(highest_price * 3.3)
-		}
-	return {
-			"lowLimit": truncate_to_8(lowest_price * 4.2),
-			"highLimit": truncate_to_8(highest_price * 4.3)
-		}
 
 def check_coin_limits():
 	global USER_CHAT_ID
@@ -213,6 +344,13 @@ def check_coin_limits():
 				lowest_price = lowest_2[0][1]
 				highest_price = highest_2[-1][1]
 				
+				# Calculate and track ratio
+				ratio = highest_price / lowest_price
+				current_ratios[symbol] = {
+					'ratio': ratio,
+					'tracking_time': datetime.now(utc_tz).strftime('%d.%m.%y - %H:%M')
+				}
+				
 				# Create message for this symbol
 				alert_message = f"{index}) {symbol}:\n"
 				index += 1
@@ -224,35 +362,32 @@ def check_coin_limits():
 					if i == 2:
 						alert_message += "  ...\n"
 					alert_message += f"  {time} : {low:.8f}\n"
-				
-				# Calculate and track ratio
-				ratio = highest_price / lowest_price
-				current_ratios[symbol] = {
-					'ratio': ratio
-				}
 
-				# Check if previous ratio exists and is different
-				is_increased = False
-				if symbol in previous_ratios:
+				# Kiểm tra và format ratio
+				if symbol not in previous_ratios:
+					# Nếu symbol chưa từng có trong previous_ratios
+					alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
+					previous_ratios[symbol] = current_ratios[symbol]
+				else:
+					# Nếu symbol đã có trong previous_ratios
 					prev_data = previous_ratios[symbol]
 					prev_ratio = prev_data['ratio']
 
 					# Determine if the ratio has increased
 					is_increased = ratio >= (prev_ratio + 0.01)
-					has_significant_increase |= is_increased
 
 					ratio_change = (ratio - prev_ratio) / prev_ratio * 100
-
-					# Add ratio with appropriate formatting
+					print(f'{symbol} : {ratio} ({ratio_change}%)')
+					
 					if is_increased:
 						alert_message += f"\n  Tỉ lệ Cao/Thấp: 🟢 {ratio:.4f} (+{ratio_change:.2f}%)\n"
+						has_significant_increase = True
+						previous_ratios[symbol] = current_ratios[symbol]
 					else:
 						alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
-				else:
-					alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
 
 				alert_message += "------------------------------"
-				alert_messages.append(alert_message)  # Add message to list
+				alert_messages.append(alert_message)
 
 			except ValueError:
 				print(f"Error converting data to float for {symbol}")
@@ -261,11 +396,12 @@ def check_coin_limits():
 		except Exception as e:
 			print(f"Error checking {symbol}: {e}")
 
-	# Save current ratios for next comparison
-	save_previous_ratios(current_ratios)
+	# Lưu lại previous_ratios với các coin đã thay đổi
+	save_previous_ratios(previous_ratios)
 
-	# Send messages only if there's a significant increase
+	# Chỉ lưu và gửi thông báo nếu có sự thay đổi
 	if has_significant_increase and alert_messages:
+
 		full_alert = f"****** Automatic Telegram Bot Message ******\n"
 		full_alert += f"Monitoring data at {datetime.now(utc_tz).strftime('%H:%M - %d.%m.%y')} UTC:\n\n"
 		current_message = full_alert
@@ -278,7 +414,7 @@ def check_coin_limits():
 
 		if current_message.strip():
 			bot.send_message(chat_id=USER_CHAT_ID, text=current_message, parse_mode='Markdown')
-			
+
 TIME_SET = [5, 'm']
 
 def run_schedule():
