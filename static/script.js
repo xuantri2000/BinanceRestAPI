@@ -311,6 +311,12 @@ function calculateLimits(lowestPrice, highestPrice) {
             highLimit: truncateTo8(highestPrice * 3.3) 
         };
     }
+	else {
+		return { 
+            lowLimit: truncateTo8(lowestPrice * 4.2), 
+            highLimit: truncateTo8(highestPrice * 4.3) 
+        };
+	}
     return { lowLimit: "Không", highLimit: "Không" };
 }
 
