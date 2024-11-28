@@ -11,11 +11,13 @@ import requests
 import hashlib
 import hmac
 import urllib.parse
+import os
+from dotenv import load_dotenv
 
 app = Flask(__name__)
 
-API_KEY = 'NFyLaXIvtVQRQGVzItCqhIC895gkJjCHEEABtmxgzY0k2M0PRcqEy1DPLZd4g71a'
-API_SECRET = 'UEKO5VV7X8wkSb95qaFSDPb92fIGmdUezvtnWAqqBr5Mj6jOuGWbCL8uwCoTNwa8'
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
 # BASE_URL = 'https://testnet.binance.vision/api/v3'  # Dùng testnet cho các lệnh cần xác thực
 BASE_URL = 'https://api.binance.com/api/v3'  # Dùng testnet cho các lệnh cần xác thực
 
