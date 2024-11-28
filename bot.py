@@ -177,6 +177,7 @@ def check_coin_limits():
 	alert_messages = []  # List to store messages
 	previous_ratios = load_previous_ratios()
 	current_ratios = {}
+	has_significant_increase = False
 
 	for symbol in coins:
 		try:
@@ -212,7 +213,7 @@ def check_coin_limits():
 				lowest_price = lowest_2[0][1]
 				highest_price = highest_2[-1][1]
 				
-				# Create message for each record
+				# Create message for this symbol
 				alert_message = f"{index}) {symbol}:\n"
 				index += 1
 				
@@ -230,26 +231,27 @@ def check_coin_limits():
 					'ratio': ratio
 				}
 
-				# Compare with previous ratio
+				# Check if previous ratio exists and is different
+				is_increased = False
 				if symbol in previous_ratios:
 					prev_data = previous_ratios[symbol]
 					prev_ratio = prev_data['ratio']
 
-					# Check if previous ratio is within 5-10 minutes
+					# Determine if the ratio has increased
+					is_increased = ratio >= (prev_ratio + 0.01)
+					has_significant_increase |= is_increased
+
 					ratio_change = (ratio - prev_ratio) / prev_ratio * 100
 
-					# Format ratio line - italic if increased
-					if ratio_change > 0:
-						alert_message += f"\n  Tỉ lệ Cao/Thấp: 🟢 __{ratio:.4f}__ (+{ratio_change:.2f}%)\n"
-					elif ratio_change == 0:
-						alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
+					# Add ratio with appropriate formatting
+					if is_increased:
+						alert_message += f"\n  Tỉ lệ Cao/Thấp: 🟢 {ratio:.4f} (+{ratio_change:.2f}%)\n"
 					else:
-						alert_message += f"\n  Tỉ lệ Cao/Thấp: 🔴 {ratio:.4f} ({ratio_change:.2f}%)\n"
+						alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
 				else:
 					alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
 
 				alert_message += "------------------------------"
-
 				alert_messages.append(alert_message)  # Add message to list
 
 			except ValueError:
@@ -262,8 +264,8 @@ def check_coin_limits():
 	# Save current ratios for next comparison
 	save_previous_ratios(current_ratios)
 
-	# Send messages (existing code remains the same)
-	if alert_messages:
+	# Send messages only if there's a significant increase
+	if has_significant_increase and alert_messages:
 		full_alert = f"****** Automatic Telegram Bot Message ******\n"
 		full_alert += f"Monitoring data at {datetime.now(utc_tz).strftime('%H:%M - %d.%m.%y')} UTC:\n\n"
 		current_message = full_alert
@@ -276,49 +278,49 @@ def check_coin_limits():
 
 		if current_message.strip():
 			bot.send_message(chat_id=USER_CHAT_ID, text=current_message, parse_mode='Markdown')
-
+			
 TIME_SET = [5, 'm']
 
 def run_schedule():
-    while True:
-        now = datetime.now()
-        if TIME_SET[1] == 's':
-            # Gửi liên tục sau mỗi khoảng thời gian được định nghĩa.
-            interval_seconds = TIME_SET[0]
-            next_run_time = now + timedelta(seconds=interval_seconds)
-            wait_time = interval_seconds
-        elif TIME_SET[1] == 'm':
-            # Gửi ở giây thứ 10 của mỗi bước nhảy phút.
-            interval_minutes = TIME_SET[0]
-            
-            # Calculate the next minute to run
-            next_minute = ((now.minute // interval_minutes) + 1) * interval_minutes
-            
-            # Handle rollover to next hour if needed
-            if next_minute >= 60:
-                next_minute = next_minute % 60
-                next_run_time = (now + timedelta(hours=1)).replace(
-                    minute=next_minute,
-                    second=20, 
-                    microsecond=0
-                )
-            else:
-                next_run_time = now.replace(
-                    minute=next_minute,
-                    second=20, 
-                    microsecond=0
-                )
-            
-            # Nếu thời gian hiện tại đã qua thời gian tính toán, chuyển sang lần tiếp theo.
-            if now >= next_run_time:
-                next_run_time += timedelta(minutes=interval_minutes)
-            
-            wait_time = (next_run_time - now).total_seconds()
+	while True:
+		now = datetime.now()
+		if TIME_SET[1] == 's':
+			# Gửi liên tục sau mỗi khoảng thời gian được định nghĩa.
+			interval_seconds = TIME_SET[0]
+			next_run_time = now + timedelta(seconds=interval_seconds)
+			wait_time = interval_seconds
+		elif TIME_SET[1] == 'm':
+			# Gửi ở giây thứ 10 của mỗi bước nhảy phút.
+			interval_minutes = TIME_SET[0]
+			
+			# Calculate the next minute to run
+			next_minute = ((now.minute // interval_minutes) + 1) * interval_minutes
+			
+			# Handle rollover to next hour if needed
+			if next_minute >= 60:
+				next_minute = next_minute % 60
+				next_run_time = (now + timedelta(hours=1)).replace(
+					minute=next_minute,
+					second=5, 
+					microsecond=0
+				)
+			else:
+				next_run_time = now.replace(
+					minute=next_minute,
+					second=5, 
+					microsecond=0
+				)
+			
+			# Nếu thời gian hiện tại đã qua thời gian tính toán, chuyển sang lần tiếp theo.
+			if now >= next_run_time:
+				next_run_time += timedelta(minutes=interval_minutes)
+			
+			wait_time = (next_run_time - now).total_seconds()
 
-        print(f"Đợi {wait_time:.2f} giây đến lần chạy tiếp theo lúc {next_run_time.strftime('%H:%M:%S')}.")
+		print(f"Đợi {wait_time:.2f} giây đến lần chạy tiếp theo lúc {next_run_time.strftime('%H:%M:%S')}.")
 
-        time.sleep(wait_time)
-        check_coin_limits()
+		time.sleep(wait_time)
+		check_coin_limits()
 
 def start_telegram_bot():
 	bot_thread = threading.Thread(target=bot.polling)

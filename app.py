@@ -182,11 +182,11 @@ def get_historical_data():
                 'limit': 1000
             }
             
-            print(f"Chunk {i + 1}/{num_chunks}:")
-            print(f"Start: {chunk_start}")
-            print(f"End: {chunk_end}")
-            print("Params:", params)
-            print("---")
+            # print(f"Chunk {i + 1}/{num_chunks}:")
+            # print(f"Start: {chunk_start}")
+            # print(f"End: {chunk_end}")
+            # print("Params:", params)
+            # print("---")
 
             # Gửi yêu cầu GET đến Binance API
             response = requests.get(f"{BASE_URL}/klines", params=params)
