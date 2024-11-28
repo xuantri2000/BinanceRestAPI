@@ -290,14 +290,29 @@ def run_schedule():
         elif TIME_SET[1] == 'm':
             # Gửi ở giây thứ 10 của mỗi bước nhảy phút.
             interval_minutes = TIME_SET[0]
-            next_run_time = now.replace(
-                second=10, 
-                microsecond=0, 
-                minute=(now.minute // interval_minutes + 1) * interval_minutes
-            )
+            
+            # Calculate the next minute to run
+            next_minute = ((now.minute // interval_minutes) + 1) * interval_minutes
+            
+            # Handle rollover to next hour if needed
+            if next_minute >= 60:
+                next_minute = next_minute % 60
+                next_run_time = (now + timedelta(hours=1)).replace(
+                    minute=next_minute,
+                    second=20, 
+                    microsecond=0
+                )
+            else:
+                next_run_time = now.replace(
+                    minute=next_minute,
+                    second=20, 
+                    microsecond=0
+                )
+            
             # Nếu thời gian hiện tại đã qua thời gian tính toán, chuyển sang lần tiếp theo.
             if now >= next_run_time:
                 next_run_time += timedelta(minutes=interval_minutes)
+            
             wait_time = (next_run_time - now).total_seconds()
 
         print(f"Đợi {wait_time:.2f} giây đến lần chạy tiếp theo lúc {next_run_time.strftime('%H:%M:%S')}.")
