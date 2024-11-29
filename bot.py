@@ -1,5 +1,7 @@
+import math
 import os
 import time
+from flask import jsonify, request
 import requests
 import telebot
 import json
@@ -286,12 +288,166 @@ Quản lý Danh Sách Coin:
 
 /status - Hiển thị lần cập nhật cuối trong file tỉ lệ cao/thấp
 
+/track [coin] [days] - Theo dõi coin trong vòng [days] ngày
+
 🤖 Hướng dẫn sử dụng:
 - Thêm coin vào danh sách để bot theo dõi và gửi thông báo
 - Mỗi coin sẽ được phân tích giá và gửi thông báo tự động
 - Sử dụng /help để xem hướng dẫn chi tiết bất kỳ lúc nào
 """
 	bot.reply_to(message, help_text)
+
+@bot.message_handler(commands=['track'])
+def track_command(message):
+	try:
+		# Parse command input
+		command_parts = message.text.split()
+		if len(command_parts) != 3:
+			bot.reply_to(message, "Cú pháp không đúng. Vui lòng nhập: /track <symbol> <days>")
+			return
+
+		symbol = command_parts[1].upper()
+		try:
+			days = int(command_parts[2])
+			if days <= 0:
+				raise ValueError
+		except ValueError:
+			bot.reply_to(message, "Số ngày phải là một số nguyên dương.")
+			return
+
+		# Call get_historical_data
+		historical_data = get_historical_data(symbol, days)
+
+		if 'error' in historical_data:
+			bot.reply_to(message, f"Đã xảy ra lỗi: {historical_data['error']}")
+			return
+
+		# Process data to calculate high/low details per day
+		daily_stats = {}
+		for kline in historical_data:
+			date, time = kline[0].split(' - ')  # Extract date and time (dd.mm.yy - hh:mm)
+			low_price = float(kline[3])  # Column 4 is the Low price
+
+			if date not in daily_stats:
+				daily_stats[date] = {
+					'lows': [],
+					'ratios': []
+				}
+			
+			daily_stats[date]['lows'].append((time, low_price))
+
+		# Process ratios and prepare for sorting
+		ratio_sorted_dates = []
+		for date, stats in daily_stats.items():
+			# Sort low prices
+			sorted_lows = sorted(stats['lows'], key=lambda x: x[1])
+			
+			# Get 2 lowest and 2 highest prices
+			lowest_2 = sorted_lows[:2]
+			highest_2 = sorted_lows[-2:]
+			
+			# Calculate ratio
+			ratio = highest_2[-1][1] / lowest_2[0][1] if lowest_2[0][1] > 0 else 0
+			
+			ratio_sorted_dates.append((date, ratio, lowest_2, highest_2))
+		
+		# Sort by ratio in descending order
+		ratio_sorted_dates.sort(key=lambda x: x[1], reverse=True)
+
+		# Log tracking start
+		utc_tz = timezone('UTC')
+		current_time = datetime.now(utc_tz).strftime('%Y-%m-%d %H:%M:%S')
+		result_message = [f"**** Tracking {symbol} at {current_time} ****"]
+
+		# Display results with numbered order
+		for rank, (date, ratio, lowest_2, highest_2) in enumerate(ratio_sorted_dates, 1):
+			# Create the day's entry
+			day_entry = f"{rank}) {date}\n"
+			
+			# Add 2 lowest prices
+			for time, low in lowest_2:
+				day_entry += f"  {date} - {time} : {low:.8f}\n"
+			
+			day_entry += "  .....\n"
+			
+			# Add 2 highest prices
+			for time, high in highest_2:
+				day_entry += f"  {date} - {time} : {high:.8f}\n"
+			
+			day_entry += f"  Tỷ lệ Cao/Thấp: {ratio:.4f}"
+			
+			result_message.append(day_entry)
+
+		# Send result to Telegram
+		if result_message:
+			bot.reply_to(message, "\n\n".join(result_message))
+		else:
+			bot.reply_to(message, "Không có dữ liệu để hiển thị.")
+
+	except Exception as e:
+		bot.reply_to(message, f"Đã xảy ra lỗi: {str(e)}")
+
+def get_historical_data(symbol, days):
+	try:
+		# Đặt múi giờ UTC
+		utc_tz = timezone('UTC')
+
+		# Thời điểm hiện tại theo UTC
+		current_time_utc = datetime.now(utc_tz)
+
+		# Thời điểm bắt đầu (n-1 ngày trước, tính từ đầu ngày)
+		start_time = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days - 1)
+
+		# Số ngày trong mỗi chunk
+		days_per_chunk = 3
+
+		# Tính số chunks cần thiết
+		num_chunks = math.ceil(days / days_per_chunk)
+
+		all_data = []
+
+		# Lặp qua từng chunk để lấy dữ liệu
+		for i in range(num_chunks):
+			if i == 0:
+				chunk_end = current_time_utc
+			else:
+				days_back = i * days_per_chunk
+				chunk_end = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_back - 1)
+
+			if i == num_chunks - 1:
+				chunk_start = start_time
+			else:
+				chunk_start = chunk_end - timedelta(days=days_per_chunk)
+
+			params = {
+				'symbol': symbol,
+				'interval': '5m',
+				'startTime': int(chunk_start.timestamp() * 1000),
+				'endTime': int(chunk_end.timestamp() * 1000),
+				'limit': 1000
+			}
+
+			response = requests.get(f"{BASE_URL}/klines", params=params)
+			klines = response.json()
+
+			for kline in klines:
+				try:
+					open_time = datetime.fromtimestamp(int(float(kline[0])) / 1000, tz=utc_tz)
+				except ValueError:
+					return {'error': f"Vui lòng kiểm tra lại tên symbol: " + symbol}
+
+				formatted_time = open_time.strftime('%d.%m.%y - %H:%M')
+				formatted_kline = [formatted_time] + kline[1:]
+				all_data.append(formatted_kline)
+
+			if i < num_chunks - 1:
+				time.sleep(0.1)
+
+		all_data.sort(key=lambda x: datetime.strptime(x[0], '%d.%m.%y - %H:%M'))
+		return all_data
+
+	except Exception as e:
+		return {'error': str(e)}
 
 def check_coin_limits():
 	global USER_CHAT_ID
