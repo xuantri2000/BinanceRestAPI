@@ -303,7 +303,6 @@ def check_coin_limits():
 	current_time_utc = datetime.now(utc_tz)
 	chunk_start = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
 	chunk_end = current_time_utc
-	index = 1
 
 	alert_messages = []  # List to store messages
 	previous_ratios = load_previous_ratios()
@@ -352,8 +351,7 @@ def check_coin_limits():
 				}
 				
 				# Create message for this symbol
-				alert_message = f"{index}) {symbol}:\n"
-				index += 1
+				alert_message = f"{symbol}:\n"
 				
 				# Combine and sort by time
 				combined_records = sorted(lowest_2 + highest_2, key=lambda x: x[1])
@@ -387,7 +385,12 @@ def check_coin_limits():
 						alert_message += f"\n  Tỉ lệ Cao/Thấp: {ratio:.4f}\n"
 
 				alert_message += "------------------------------"
-				alert_messages.append(alert_message)
+				
+				# Thêm thông tin ratio vào message để dễ sắp xếp
+				alert_messages.append({
+					'message': alert_message, 
+					'ratio': ratio
+				})
 
 			except ValueError:
 				print(f"Error converting data to float for {symbol}")
@@ -401,11 +404,16 @@ def check_coin_limits():
 
 	# Chỉ lưu và gửi thông báo nếu có sự thay đổi
 	if has_significant_increase and alert_messages:
+		# Sắp xếp messages theo ratio giảm dần
+		sorted_messages = sorted(alert_messages, key=lambda x: x['ratio'], reverse=True)
 
 		full_alert = f"****** Automatic Telegram Bot Message ******\n"
 		full_alert += f"Monitoring data at {datetime.now(utc_tz).strftime('%H:%M - %d.%m.%y')} UTC:\n\n"
 		current_message = full_alert
-		for message in alert_messages:
+		
+		# Thêm index sau khi sắp xếp
+		for index, item in enumerate(sorted_messages, 1):
+			message = f"{index}) " + item['message']
 			if len(current_message) + len(message) > 4000:
 				bot.send_message(chat_id=USER_CHAT_ID, text=current_message, parse_mode='Markdown')
 				current_message = full_alert
