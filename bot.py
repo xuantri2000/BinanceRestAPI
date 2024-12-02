@@ -588,7 +588,7 @@ def check_coin_limits():
         if current_message.strip():
             bot.send_message(chat_id=USER_CHAT_ID, text=current_message, parse_mode='Markdown')
 
-TIME_SET = [15, 's']
+TIME_SET = [5, 'm']
 
 def run_schedule():
     while True:
