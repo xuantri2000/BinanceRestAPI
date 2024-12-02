@@ -588,7 +588,7 @@ def check_coin_limits():
         if current_message.strip():
             bot.send_message(chat_id=USER_CHAT_ID, text=current_message, parse_mode='Markdown')
 
-TIME_SET = [5, 'm']
+TIME_SET = [15, 's']
 
 def run_schedule():
     while True:
@@ -636,18 +636,24 @@ def run_schedule():
             time.sleep(5)
 
 def start_telegram_bot():
-    while True:
-        if is_connected():
-            try:
-                bot_thread = threading.Thread(target=bot.polling)
-                bot_thread.start()
-                break
-            except Exception as e:
-                print(f"Lỗi bot.polling: {e}")
+    def polling():
+        while True:
+            if is_connected():
+                try:
+                    print("Đang khởi động bot...")
+                    bot.polling(non_stop=True, interval=0)
+                    print("Bot đang chạy!")
+                    break  # Thoát khỏi vòng lặp khi polling thành công
+                except Exception as e:
+                    print(f"Lỗi bot.polling: {e}. Thử lại sau...")
+                    time.sleep(5)
+            else:
+                print("Mất mạng, chờ kết nối lại...")
                 time.sleep(5)
-        else:
-            print("Mất mạng, chờ kết nối lại...")
-            time.sleep(5)
+
+    # Chạy polling trong một luồng riêng
+    bot_thread = threading.Thread(target=polling, daemon=True)
+    bot_thread.start()
             
 def fetch_binance_data(url, params):
     while True:
@@ -656,7 +662,7 @@ def fetch_binance_data(url, params):
                 response = requests.get(url, params=params)
                 response.raise_for_status()  # Kiểm tra lỗi HTTP
                 return response
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 print(f"Lỗi API Binance: {e}")
                 time.sleep(5)
         else:
