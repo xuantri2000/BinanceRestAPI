@@ -664,7 +664,7 @@ def fetch_binance_data(url, params):
                 return response
             except Exception as e:
                 print(f"Lỗi API Binance: {e}")
-                time.sleep(5)
+                break
         else:
             print("Mất mạng, chờ kết nối lại...")
             time.sleep(5)
