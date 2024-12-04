@@ -153,7 +153,10 @@ def status_coins(message):
         status_message += f"  Tỉ lệ Cao/Thấp: {data['ratio']:.4f}\n"
         status_message += f"  Lần ghi cuối: {data.get('tracking_time', 'Không có dữ liệu')}\n\n"
     
-    bot.reply_to(message, status_message)
+    # Split long status message if needed
+    split_messages = split_long_message(status_message)
+    for msg in split_messages:
+        bot.reply_to(message, msg)
 
 @bot.message_handler(commands=['add'])
 def add_coins(message):
@@ -275,6 +278,33 @@ def list_coins(message):
     else:
         response = "Danh sách coin trống."
     bot.reply_to(message, response)
+    
+def split_long_message(message, max_length=4096):
+    """
+    Split a long message into multiple messages of specified max length.
+    Telegram has a 4096 character limit per message.
+    """
+    messages = []
+    while message:
+        # If message is shorter than max length, add it and break
+        if len(message) <= max_length:
+            messages.append(message)
+            break
+        
+        # Try to split at a newline close to max length
+        split_index = message.rfind('\n', 0, max_length)
+        
+        # If no newline found, just cut at max length
+        if split_index == -1:
+            split_index = max_length
+        
+        # Add the first part to messages
+        messages.append(message[:split_index])
+        
+        # Remove the first part from the message
+        message = message[split_index:].lstrip()
+    
+    return messages
 
 @bot.message_handler(commands=['help'])
 def help_command(message):
@@ -328,7 +358,7 @@ def track_command(message):
         historical_data = get_historical_data(symbol, days)
 
         if 'error' in historical_data:
-            bot.reply_to(message, f"Đã xảy ra lỗi: {historical_data['error']}")
+            bot.reply_to(message, f"Đã xảy ra lỗi: Kiểm tra lại tên symbol")
             return
 
         # Process data to calculate high/low details per day
@@ -366,7 +396,7 @@ def track_command(message):
         # Log tracking start
         utc_tz = timezone('UTC')
         current_time = datetime.now(utc_tz).strftime('%Y-%m-%d %H:%M:%S')
-        result_message = [f"**** Tracking {symbol} at {current_time} ****"]
+        result_message = f"**** Tracking {symbol} at {current_time} ****\n\n"
 
         # Display results with numbered order
         for rank, (date, ratio, lowest_2, highest_2) in enumerate(ratio_sorted_dates, 1):
@@ -383,15 +413,14 @@ def track_command(message):
             for time, high in highest_2:
                 day_entry += f"  {date} - {time} : {high:.8f}\n"
             
-            day_entry += f"  Tỷ lệ Cao/Thấp: {ratio:.4f}"
+            day_entry += f"  Tỷ lệ Cao/Thấp: {ratio:.4f}\n\n"
             
-            result_message.append(day_entry)
+            result_message += day_entry
 
-        # Send result to Telegram
-        if result_message:
-            bot.reply_to(message, "\n\n".join(result_message))
-        else:
-            bot.reply_to(message, "Không có dữ liệu để hiển thị.")
+        # Split long message and send multiple messages if needed
+        split_messages = split_long_message(result_message)
+        for msg in split_messages:
+            bot.reply_to(message, msg)
 
     except Exception as e:
         bot.reply_to(message, f"Đã xảy ra lỗi: {str(e)}")
@@ -466,6 +495,15 @@ def check_coin_limits():
     coins = read_coin_list()
     utc_tz = timezone('UTC')
     current_time_utc = datetime.now(utc_tz)
+    
+	# Kiểm tra nếu là đúng 00:00 UTC
+    if current_time_utc.hour == 0 and current_time_utc.minute == 0 and current_time_utc.second == 5:
+        # Reset toàn bộ ratios về 1.0
+        previous_ratios = {symbol: {'ratio': 1.0, 'tracking_time': current_time_utc.strftime('%d.%m.%y - %H:%M')} for symbol in read_coin_list()}
+        save_previous_ratios(previous_ratios)
+        bot.send_message(chat_id=USER_CHAT_ID, text="Thời gian mốc 00:00, toàn bộ symbol trả về 1.0!!!!", parse_mode='Markdown')
+        return
+    
     chunk_start = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     chunk_end = current_time_utc
 
